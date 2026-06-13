@@ -2,11 +2,12 @@
 
 Notes and operating profiles on working with AI coding agents.
 
-- **[Fable5.md](Fable5.md)** — Fable's operating profile: a portable behavioral
-  profile of how the model thinks and works, written as instructions in its own
-  grain. Two verification gates (verify what you claim is true; verify what you
-  claim you finished), aimed at the model's actual weak spot — its own first
-  drafts — and scaled to the blast radius.
+- **[Fable5.md](Fable5.md)** — a portable operating instruction set: how Fable 5
+  thinks, decides, builds, and communicates, written as standalone instructions
+  in its own grain. Verify before you claim, keep changes in scope and
+  reversible, lead with a recommendation at forks, ground advice in the project's
+  own data, and close with an honest state-of-the-world. Attach it to any capable
+  model to make its output work the way Fable does.
 
 ## License
 
