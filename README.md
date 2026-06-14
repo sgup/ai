@@ -11,6 +11,9 @@ Notes and operating profiles on working with AI coding agents.
 - **[findings.md](findings.md)** — a controlled A/B/C field test of these
   instructions (none / previous / current) on a real codebase: where they change
   a coding agent's output, where they don't, and where they're worth the cost.
+- **[findings-audit.md](findings-audit.md)** — an observational audit of a week of
+  real Fable 5 sessions: the recurring failure modes and habits, mined and
+  adversarially verified, that shaped the current revision of the instructions.
 
 ## License
 
