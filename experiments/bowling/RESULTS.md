@@ -129,8 +129,9 @@ and fastest (7.4 min); shipped no test file.
 
 - **n=1 per variant.** LLM output varies run-to-run; every difference above could be
   sampling noise. To make any claim causal you'd need multiple runs per variant.
-- **Unverified gameplay.** No game here has been rendered or played by the driver. The
-  only confirmed correctness is the three shipped scoring/physics suites.
+- **Gameplay now verified (served over HTTP).** All five originals were later loaded in
+  real Chrome 149 and confirmed to render and reach an interactive aiming state — see the
+  Update below and [`screenshots/`](./screenshots). (The shipped scoring/physics suites pass too.)
 - **Injection ≠ production placement.** Instructions were injected via the user turn,
   not the system prompt (the only mechanism available to the runner). Consistent across
   variants, but an approximation of how they actually operate.
@@ -143,3 +144,28 @@ and fastest (7.4 min); shipped no test file.
   file but still needs internet for its CDN modules.
 - Re-run the shipped tests: `node v1/code/js/scoring.test.mjs`, `node v2/code/scoring.test.js`,
   `node v2/code/physics.test.js`, `node v3/code/scoring.test.js`.
+
+---
+
+## Update (2026-06-15): all five verified playable when served — and the `file://` trap
+
+After the runs, every original build was loaded in **real Chrome 149** (headless
+Playwright) served over HTTP. **All five render and reach an interactive aiming state**
+(lane, pins, controls, scoreboard). Screenshots in [`screenshots/`](./screenshots).
+
+| Variant | Served over HTTP |
+|---------|------------------|
+| baseline | ✅ playable — 3D lane, ball picker, aim/spin/power meters |
+| v1 | ✅ playable — intro dismisses on click, lane + ball at foul line |
+| v2 | ✅ playable — auto-starts, hook/spin guide line, full rack |
+| v3 | ✅ playable — auto-starts, spin/hook slider, power meter |
+| v4 | ✅ playable — auto-starts, New Game / camera-view toggle |
+
+**The `file://` trap.** Opening `index.html` by double-click loads it from `file://`
+(origin `null`), where Chrome blocks all ES-module loading by CORS — the module graph
+never loads and the game never starts (frozen intro / stuck spinner; see the
+`*-FAILURE-*` screenshots). This — not any game bug — caused every "broken" report
+during testing. Three `-fixed` rebuilds chased phantom causes (CDN fallbacks, handler
+reordering, boot watchdogs); none addressed `file://`, because no code change to an
+ES-module app makes it load from `file://`. They were deleted. The real fix is simply:
+**serve over HTTP.**
