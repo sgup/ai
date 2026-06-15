@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Strike Zone — 3D Bowling</title>
+    <style>
+      :root {
+        --accent: #00ffcc;
+        --accent-dim: #009e84;
+        --panel: rgba(10, 14, 26, 0.82);
+        --gold: #ffcf5a;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #05070f;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: #e8ecf6;
+        user-select: none;
+        cursor: crosshair;
+      }
+      #scene { position: fixed; inset: 0; z-index: 0; }
+
+      /* Scoreboard */
+      #hud-top {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        z-index: 10;
+        display: flex;
+        justify-content: center;
+        padding: 10px;
+        pointer-events: none;
+      }
+      #scoreboard {
+        display: flex;
+        gap: 2px;
+        background: var(--panel);
+        border: 1px solid rgba(0, 255, 204, 0.25);
+        border-radius: 10px;
+        padding: 6px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+      }
+      .frame {
+        min-width: 46px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 5px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: background 0.2s, box-shadow 0.2s;
+      }
+      .frame.active {
+        background: rgba(0, 255, 204, 0.12);
+        box-shadow: inset 0 0 0 1px var(--accent);
+      }
+      .frame-num {
+        font-size: 9px;
+        text-align: center;
+        color: #8893a8;
+        padding: 1px 0;
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .frame-rolls {
+        display: flex;
+        justify-content: flex-end;
+        gap: 1px;
+        padding: 2px;
+        min-height: 18px;
+      }
+      .frame[data-frame="9"] { min-width: 64px; }
+      .roll {
+        width: 16px;
+        height: 16px;
+        line-height: 16px;
+        text-align: center;
+        font-size: 12px;
+        font-weight: 700;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 3px;
+        color: var(--gold);
+      }
+      .frame-total {
+        text-align: center;
+        font-size: 14px;
+        font-weight: 700;
+        padding: 2px 0;
+        min-height: 20px;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.25);
+      }
+      #total-wrap {
+        margin-left: 8px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 0 14px;
+        background: var(--panel);
+        border: 1px solid rgba(0, 255, 204, 0.25);
+        border-radius: 10px;
+      }
+      #total-label { font-size: 9px; color: #8893a8; letter-spacing: 1px; }
+      #total-score { font-size: 26px; font-weight: 800; color: var(--accent); }
+
+      /* Power meter */
+      #power-meter {
+        position: fixed;
+        bottom: 90px; left: 50%;
+        transform: translateX(-50%);
+        width: 300px;
+        z-index: 10;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+      #power-bar {
+        height: 16px;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        overflow: hidden;
+        position: relative;
+      }
+      #power-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #2ad17f, #ffcf5a 55%, #ff4d4d);
+        transition: width 0.04s linear;
+      }
+      #power-label {
+        text-align: center;
+        font-size: 10px;
+        letter-spacing: 1px;
+        color: #9fb0c8;
+        margin-bottom: 3px;
+      }
+      #spin-bar {
+        margin-top: 8px;
+        height: 8px;
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 6px;
+        position: relative;
+      }
+      #spin-bar::before {
+        content: "";
+        position: absolute;
+        left: 50%; top: -3px; bottom: -3px;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.3);
+      }
+      #spin-indicator {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 14px; height: 14px;
+        margin: -7px 0 0 -7px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 10px var(--accent);
+        transition: left 0.05s linear;
+      }
+      #spin-label { text-align: center; font-size: 9px; color: #7e8aa0; margin-top: 3px; }
+
+      /* Message banner */
+      .message {
+        position: fixed;
+        top: 38%; left: 50%;
+        transform: translate(-50%, -50%) scale(0.6);
+        z-index: 20;
+        font-size: 64px;
+        font-weight: 900;
+        letter-spacing: 3px;
+        opacity: 0;
+        pointer-events: none;
+        text-transform: uppercase;
+        transition: opacity 0.25s, transform 0.25s;
+        text-shadow: 0 4px 24px rgba(0, 0, 0, 0.8);
+      }
+      .message.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      .message.strike { color: #ff4d6d; text-shadow: 0 0 30px #ff4d6d, 0 4px 24px #000; }
+      .message.spare { color: #4dd2ff; text-shadow: 0 0 30px #4dd2ff, 0 4px 24px #000; }
+      .message.gutter { color: #8893a8; font-size: 40px; }
+      .message.final { color: var(--gold); font-size: 34px; text-shadow: 0 0 30px var(--gold); }
+
+      /* Hint */
+      #hint {
+        position: fixed;
+        bottom: 24px; left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        background: var(--panel);
+        border: 1px solid rgba(0, 255, 204, 0.2);
+        border-radius: 20px;
+        padding: 8px 20px;
+        font-size: 13px;
+        color: #c4cfe0;
+        backdrop-filter: blur(8px);
+        transition: opacity 0.4s;
+        text-align: center;
+      }
+      #hint b { color: var(--accent); }
+
+      #title {
+        position: fixed;
+        top: 14px; left: 18px;
+        z-index: 10;
+        font-size: 16px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        color: var(--accent);
+        text-shadow: 0 0 18px var(--accent-dim);
+      }
+      #title span { color: #fff; font-weight: 300; }
+
+      #loading {
+        position: fixed; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        flex-direction: column;
+        z-index: 100;
+        background: #05070f;
+        gap: 16px;
+      }
+      #loading .spinner {
+        width: 54px; height: 54px;
+        border: 4px solid rgba(0, 255, 204, 0.2);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      #loading p { color: #8893a8; letter-spacing: 2px; font-size: 13px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #error {
+        position: fixed; inset: 0; z-index: 200;
+        display: none;
+        align-items: center; justify-content: center;
+        flex-direction: column;
+        background: #0a0c14; color: #ff6b6b; padding: 30px; text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene"></div>
+
+    <div id="title">STRIKE<span>ZONE</span></div>
+
+    <div id="hud-top">
+      <div id="scoreboard"></div>
+      <div id="total-wrap">
+        <div id="total-label">TOTAL</div>
+        <div id="total-score">0</div>
+      </div>
+    </div>
+
+    <div id="power-meter">
+      <div id="power-label">POWER</div>
+      <div id="power-bar"><div id="power-fill"></div></div>
+      <div id="spin-bar"><div id="spin-indicator"></div></div>
+      <div id="spin-label">◄ HOOK · SPIN · HOOK ►</div>
+    </div>
+
+    <div id="message" class="message"></div>
+
+    <div id="hint">
+      Move mouse to <b>aim</b> · <b>press &amp; hold</b> to set power · drag up/down for
+      <b>spin</b> · <b>release</b> to bowl · <b>R</b> to restart
+    </div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <p>LOADING LANE…</p>
+    </div>
+
+    <div id="error">
+      <h2>Could not load 3D engine</h2>
+      <p>This game needs WebGL and an internet connection for the Three.js library.<br />
+        Try a modern browser (Chrome, Firefox, Safari, Edge).</p>
+    </div>
+
+    <!-- Game logic (no deps) -->
+    <script src="scoring.js"></script>
+    <script src="physics.js"></script>
+
+    <!-- Three.js: try CDN, fall back to alt CDN, then show error. -->
+    <script>
+      (function loadThree() {
+        var sources = [
+          "three.min.js", // vendored locally — works fully offline
+          "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js",
+          "https://unpkg.com/three@0.160.0/build/three.min.js",
+          "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js",
+        ];
+        var i = 0;
+        function tryNext() {
+          if (i >= sources.length) {
+            document.getElementById("loading").style.display = "none";
+            document.getElementById("error").style.display = "flex";
+            return;
+          }
+          var s = document.createElement("script");
+          s.src = sources[i++];
+          s.onload = onThreeReady;
+          s.onerror = tryNext;
+          document.head.appendChild(s);
+        }
+        function onThreeReady() {
+          if (!window.THREE) { tryNext(); return; }
+          var g = document.createElement("script");
+          g.src = "game.js";
+          g.onload = function () {
+            document.getElementById("loading").style.display = "none";
+          };
+          g.onerror = function () {
+            document.getElementById("loading").style.display = "none";
+            document.getElementById("error").style.display = "flex";
+          };
+          document.head.appendChild(g);
+        }
+        tryNext();
+      })();
+    </script>
+  </body>
+</html>

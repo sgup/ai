@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Strike Lanes — 3D Bowling</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+
+      <!-- Loading overlay -->
+      <div id="loading" class="overlay">
+        <div class="loader-ring"></div>
+        <div class="loader-text">Oiling the lane…</div>
+      </div>
+
+      <!-- Flash callouts (STRIKE!, SPARE!) -->
+      <div id="flash"></div>
+
+      <!-- Top: scoreboard -->
+      <div id="scoreboard" class="hud-top hidden">
+        <div class="sb-frames" id="sb-frames"></div>
+        <div class="sb-total">
+          <span class="sb-total-label">TOTAL</span>
+          <span class="sb-total-value" id="sb-total-value">0</span>
+        </div>
+      </div>
+
+      <!-- Status line -->
+      <div id="status" class="status"></div>
+
+      <!-- Bottom: controls -->
+      <div id="controls" class="hud-bottom hidden">
+        <div class="ctrl-card">
+          <div class="ctrl-row">
+            <div class="ctrl-group spin-group">
+              <label for="spin-slider">SPIN / HOOK</label>
+              <input
+                id="spin-slider"
+                type="range"
+                min="-1"
+                max="1"
+                step="0.1"
+                value="0"
+              />
+              <span id="spin-value" class="spin-value">STRAIGHT</span>
+            </div>
+            <div class="ctrl-group power-group">
+              <label>POWER</label>
+              <div class="power-meter">
+                <div class="power-fill" id="power-fill"></div>
+              </div>
+            </div>
+          </div>
+          <div class="ctrl-hint">
+            Move mouse to aim · <b>hold</b> to charge power ·
+            <b>release</b> to bowl · A / D for spin
+          </div>
+        </div>
+      </div>
+
+      <!-- End-of-game message -->
+      <div id="message" class="overlay message hidden">
+        <div class="msg-card">
+          <div class="msg-title">Game Over</div>
+          <div class="msg-sub">Final score: 0</div>
+          <button id="new-game" class="btn">New Game</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

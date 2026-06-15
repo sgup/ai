@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Strike Zone — 3D Bowling</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Three.js + addons via import map -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+
+      <!-- Loading overlay -->
+      <div id="loading" class="overlay">
+        <div class="loader-ring"></div>
+        <div class="loader-text">Waxing the lane…</div>
+      </div>
+
+      <!-- Top HUD: scoreboard -->
+      <div id="scoreboard" class="hud-top hidden">
+        <div class="sb-frames" id="sb-frames"></div>
+        <div class="sb-total">
+          <span class="sb-total-label">TOTAL</span>
+          <span class="sb-total-value" id="sb-total-value">0</span>
+        </div>
+      </div>
+
+      <!-- Bottom HUD: aim + power controls -->
+      <div id="controls" class="hud-bottom hidden">
+        <div class="ctrl-row">
+          <div class="ctrl-group">
+            <label>AIM</label>
+            <div class="meter">
+              <div class="meter-fill" id="aim-fill"></div>
+              <div class="meter-marker" id="aim-marker"></div>
+            </div>
+          </div>
+          <div class="ctrl-group">
+            <label>SPIN</label>
+            <div class="meter">
+              <div class="meter-fill spin" id="spin-fill"></div>
+              <div class="meter-marker" id="spin-marker"></div>
+            </div>
+          </div>
+          <div class="ctrl-group">
+            <label>POWER</label>
+            <div class="meter power">
+              <div class="meter-fill" id="power-fill"></div>
+            </div>
+          </div>
+        </div>
+        <div class="ctrl-hint" id="ctrl-hint">
+          Drag back &amp; release to bowl. Move left/right to aim.
+        </div>
+      </div>
+
+      <!-- Status banner -->
+      <div id="banner" class="banner hidden"></div>
+
+      <!-- Ball color picker -->
+      <div id="ball-picker" class="ball-picker hidden">
+        <span class="bp-label">BALL</span>
+        <div class="bp-swatches" id="bp-swatches"></div>
+      </div>
+
+      <!-- Start screen -->
+      <div id="start-screen" class="overlay start hidden">
+        <h1 class="title">STRIKE<span>ZONE</span></h1>
+        <p class="subtitle">A realistic 3D bowling game</p>
+        <div class="how-to">
+          <div><b>Drag</b> the ball back and release to bowl</div>
+          <div><b>Move the mouse left/right</b> while aiming to line up your shot</div>
+          <div>Add <b>spin</b> with a sideways flick at release for hook shots</div>
+        </div>
+        <button id="start-btn" class="btn-primary">START GAME</button>
+      </div>
+
+      <!-- Game over screen -->
+      <div id="gameover-screen" class="overlay start hidden">
+        <h1 class="title">GAME<span>OVER</span></h1>
+        <p class="final-score" id="final-score">Final score: 0</p>
+        <p class="final-msg" id="final-msg"></p>
+        <button id="replay-btn" class="btn-primary">PLAY AGAIN</button>
+      </div>
+    </div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

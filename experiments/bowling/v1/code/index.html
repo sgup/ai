@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>Strike Zone — 3D Bowling</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🎳</text></svg>"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <!-- Import map so bare ESM specifiers resolve from CDN with no build step. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+          "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <!-- Scoreboard -->
+    <div id="scoreboard-wrap">
+      <div id="scoreboard"></div>
+      <div id="grand-total-box">
+        <div class="label">TOTAL</div>
+        <div id="grand-total">0</div>
+      </div>
+    </div>
+
+    <!-- Turn indicator -->
+    <div id="turn">Frame 1 · Ball 1</div>
+
+    <!-- Big center message -->
+    <div id="message"></div>
+
+    <!-- Power & spin meters -->
+    <div id="meters">
+      <div class="meter-row">
+        <div class="meter-label">POWER</div>
+        <div class="bar"><div id="power-fill"></div></div>
+      </div>
+      <div class="meter-row">
+        <div class="meter-label">SPIN</div>
+        <div class="bar spin">
+          <div class="spin-center"></div>
+          <div id="spin-fill"></div>
+        </div>
+      </div>
+      <div id="hint">
+        Aim with the mouse · Press &amp; drag back to charge · Drag sideways for
+        hook · Release to bowl
+      </div>
+    </div>
+
+    <!-- Intro overlay -->
+    <div id="intro" class="overlay">
+      <div class="card">
+        <h1>🎳 Strike Zone</h1>
+        <div class="sub">A realistic 3D ten-pin bowling alley in your browser</div>
+        <ul>
+          <li>
+            <b>Aim:</b> move the mouse left and right to line up your shot.
+          </li>
+          <li>
+            <b>Power:</b> press and drag <i>backward</i> (down) — the further you
+            pull, the harder you throw.
+          </li>
+          <li>
+            <b>Hook / Spin:</b> drag sideways while pulling back to curve the
+            ball.
+          </li>
+          <li><b>Release</b> the mouse to bowl. Knock down all 10 pins!</li>
+          <li>
+            <b>Keyboard:</b> <span class="kbd">←</span
+            ><span class="kbd">→</span> aim, <span class="kbd">A</span
+            ><span class="kbd">D</span> spin, <span class="kbd">Space</span>
+            bowl.
+          </li>
+        </ul>
+        <button id="start-btn" class="btn">Start Bowling</button>
+      </div>
+    </div>
+
+    <!-- Game over overlay -->
+    <div id="gameover" class="overlay">
+      <div class="card">
+        <h1>Game Over</h1>
+        <div class="sub">Final score</div>
+        <div id="final-score">0</div>
+        <button id="play-again" class="btn">Play Again</button>
+      </div>
+    </div>
+
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

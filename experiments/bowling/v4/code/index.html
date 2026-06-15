@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Strike Zone — 3D Bowling</title>
+<style>
+  :root {
+    --ink: #f4f1ea;
+    --gold: #ffcb47;
+    --panel: rgba(12, 14, 22, 0.72);
+    --panel-line: rgba(255, 255, 255, 0.12);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #05060a; }
+  body {
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+
+  /* ---------- Scoreboard ---------- */
+  #scoreboard {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 3px; padding: 8px 10px;
+    background: var(--panel); border: 1px solid var(--panel-line);
+    border-radius: 12px; backdrop-filter: blur(10px);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    z-index: 10; max-width: calc(100vw - 24px);
+  }
+  .frame {
+    display: flex; flex-direction: column; align-items: stretch;
+    min-width: 46px; border-radius: 7px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .frame.tenth { min-width: 64px; }
+  .frame.active { outline: 2px solid var(--gold); outline-offset: 1px; }
+  .frame-head {
+    font-size: 10px; letter-spacing: 0.5px; text-align: center;
+    padding: 2px 0; color: #aab; background: rgba(255,255,255,0.04);
+  }
+  .rolls {
+    display: flex; height: 22px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .roll {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; border-left: 1px solid rgba(255,255,255,0.08);
+  }
+  .roll:first-child { border-left: none; }
+  .frame.tenth .roll { font-size: 12px; }
+  .cum {
+    height: 24px; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 800; color: var(--gold);
+  }
+  .total-box {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-width: 58px; padding: 0 6px; margin-left: 4px;
+    background: rgba(255,203,71,0.08); border-radius: 7px;
+    border: 1px solid rgba(255,203,71,0.3);
+  }
+  .total-box .lab { font-size: 9px; letter-spacing: 1px; color: #ccb37a; }
+  .total-box .val { font-size: 26px; font-weight: 900; color: var(--gold); line-height: 1; }
+
+  /* ---------- Status / instructions ---------- */
+  #status {
+    position: fixed; bottom: 92px; left: 50%; transform: translateX(-50%);
+    text-align: center; z-index: 10; pointer-events: none;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+  }
+  #status .big { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+  #status .small { font-size: 13px; color: #c8c8d8; margin-top: 2px; }
+  #status .flash { color: var(--gold); }
+
+  /* ---------- Power meter ---------- */
+  #controls {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    width: min(520px, calc(100vw - 32px)); z-index: 10;
+    display: flex; flex-direction: column; gap: 6px; align-items: center;
+  }
+  #hint {
+    font-size: 12px; color: #99a; letter-spacing: 0.3px;
+    background: var(--panel); padding: 5px 12px; border-radius: 20px;
+    border: 1px solid var(--panel-line);
+  }
+  #powerWrap {
+    width: 100%; height: 14px; border-radius: 8px; overflow: hidden;
+    background: var(--panel); border: 1px solid var(--panel-line);
+    opacity: 0; transition: opacity 0.2s;
+  }
+  #powerWrap.show { opacity: 1; }
+  #powerBar {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #4ad66d, #ffcb47 55%, #ff5247);
+    transition: width 0.03s linear;
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    pointer-events: auto; cursor: pointer;
+    background: rgba(255,255,255,0.08); color: var(--ink);
+    border: 1px solid var(--panel-line); border-radius: 10px;
+    padding: 8px 14px; font-size: 13px; font-weight: 700;
+    font-family: inherit; backdrop-filter: blur(8px);
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn:hover { background: rgba(255,255,255,0.16); }
+  .btn:active { transform: scale(0.96); }
+  #topRight { position: fixed; top: 12px; right: 12px; z-index: 10; display: flex; gap: 8px; }
+
+  /* ---------- Overlay (game over) ---------- */
+  #overlay {
+    position: fixed; inset: 0; z-index: 20; display: none;
+    align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, rgba(20,24,40,0.85), rgba(3,4,8,0.95));
+    backdrop-filter: blur(6px);
+  }
+  #overlay.show { display: flex; }
+  .card {
+    text-align: center; padding: 36px 48px; border-radius: 20px;
+    background: var(--panel); border: 1px solid var(--panel-line);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+  }
+  .card h1 { font-size: 30px; letter-spacing: 2px; margin-bottom: 4px; }
+  .card .score { font-size: 80px; font-weight: 900; color: var(--gold); line-height: 1; margin: 8px 0 4px; }
+  .card .sub { font-size: 14px; color: #bcd; margin-bottom: 22px; }
+  .card .btn { font-size: 16px; padding: 12px 28px; background: var(--gold); color: #221; border: none; }
+  .card .btn:hover { background: #ffd968; }
+
+  /* ---------- Loading ---------- */
+  #loader {
+    position: fixed; inset: 0; z-index: 50; display: flex;
+    align-items: center; justify-content: center; flex-direction: column; gap: 14px;
+    background: #05060a; color: var(--ink);
+  }
+  #loader .ring {
+    width: 46px; height: 46px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.15); border-top-color: var(--gold);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loader .err { color: #ff7b7b; font-size: 13px; max-width: 360px; text-align: center; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="loader"><div class="ring"></div><div>Setting up the lane…</div><div class="err" id="loadErr"></div></div>
+
+  <div id="scoreboard"></div>
+
+  <div id="topRight">
+    <button class="btn" id="resetBtn" title="Start a new game">New Game</button>
+    <button class="btn" id="camBtn" title="Toggle camera view">View: Behind</button>
+  </div>
+
+  <div id="status">
+    <div class="big" id="statusBig">Frame 1</div>
+    <div class="small" id="statusSmall">Drag to aim &amp; power, release to bowl</div>
+  </div>
+
+  <div id="controls">
+    <div id="powerWrap"><div id="powerBar"></div></div>
+    <div id="hint">🖱️ Click &amp; drag back on the lane to aim and set power — release to throw</div>
+  </div>
+
+  <div id="overlay">
+    <div class="card">
+      <h1 id="ovTitle">GAME OVER</h1>
+      <div class="score" id="ovScore">0</div>
+      <div class="sub" id="ovSub"></div>
+      <button class="btn" id="ovBtn">Play Again</button>
+    </div>
+  </div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.184.0",
+    "cannon-es": "https://esm.sh/cannon-es@0.20.0"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import * as CANNON from "cannon-es";
+
+/* =====================================================================
+   STRIKE ZONE — a full 10-frame 3D bowling game.
+   Three.js for rendering, cannon-es for rigid-body physics.
+   Mouse: drag back on the lane to aim + set power, release to bowl.
+   ===================================================================== */
+
+// ----- Real-world-ish dimensions (meters). Scaled to feel good on screen. -----
+const LANE_LEN   = 18.0;   // foul line to pin deck (regulation ~18.3m incl approach feel)
+const LANE_WIDTH = 1.05;   // playing surface width (~1.05m regulation)
+const GUTTER_W   = 0.23;
+const PIN_SPACING = 0.305; // 12 inches between pin centers
+const BALL_R     = 0.108;  // ~8.6 in diameter bowling ball
+const PIN_H      = 0.38;
+const PIN_R      = 0.06;
+const FOUL_Z     = 0;          // ball starts near here (z increases down the lane)
+const PIN_Z      = LANE_LEN;   // head pin location
+
+const els = {
+  app: document.getElementById("app"),
+  loader: document.getElementById("loader"),
+  loadErr: document.getElementById("loadErr"),
+  scoreboard: document.getElementById("scoreboard"),
+  statusBig: document.getElementById("statusBig"),
+  statusSmall: document.getElementById("statusSmall"),
+  powerWrap: document.getElementById("powerWrap"),
+  powerBar: document.getElementById("powerBar"),
+  hint: document.getElementById("hint"),
+  resetBtn: document.getElementById("resetBtn"),
+  camBtn: document.getElementById("camBtn"),
+  overlay: document.getElementById("overlay"),
+  ovTitle: document.getElementById("ovTitle"),
+  ovScore: document.getElementById("ovScore"),
+  ovSub: document.getElementById("ovSub"),
+  ovBtn: document.getElementById("ovBtn"),
+};
+
+// =====================================================================
+//  RENDERER / SCENE / CAMERA
+// =====================================================================
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+els.app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0d16);
+scene.fog = new THREE.Fog(0x0a0d16, 22, 40);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+
+// Two camera presets, smoothly interpolated.
+const CAM_VIEWS = {
+  behind: { pos: new THREE.Vector3(0, 1.9, -3.2), look: new THREE.Vector3(0, 0.35, 8) },
+  top:    { pos: new THREE.Vector3(0, 9.5, LANE_LEN * 0.5 - 1), look: new THREE.Vector3(0, 0, LANE_LEN * 0.55) },
+};
+let camMode = "behind";
+const camPos = CAM_VIEWS.behind.pos.clone();
+const camLook = CAM_VIEWS.behind.look.clone();
+let camFollow = false; // follow ball down the lane during a roll
+
+// =====================================================================
+//  LIGHTS
+// =====================================================================
+scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x202028, 0.55));
+
+const key = new THREE.DirectionalLight(0xffffff, 1.6);
+key.position.set(-4, 12, 4);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 1;
+key.shadow.camera.far = 50;
+const sc = 12;
+key.shadow.camera.left = -sc; key.shadow.camera.right = sc;
+key.shadow.camera.top = LANE_LEN + 4; key.shadow.camera.bottom = -4;
+key.shadow.bias = -0.0004;
+scene.add(key);
+
+// Overhead lane lights (visual pin-deck glow)
+const pinLight = new THREE.SpotLight(0xfff2d0, 2.2, 14, Math.PI / 5, 0.4, 1.2);
+pinLight.position.set(0, 6, PIN_Z - 0.5);
+pinLight.target.position.set(0, 0, PIN_Z);
+scene.add(pinLight); scene.add(pinLight.target);
+
+// =====================================================================
+//  PHYSICS WORLD
+// =====================================================================
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.allowSleep = true;
+world.defaultContactMaterial.friction = 0.04;
+
+const matLane  = new CANNON.Material("lane");
+const matBall  = new CANNON.Material("ball");
+const matPin   = new CANNON.Material("pin");
+const matGutter = new CANNON.Material("gutter");
+
+world.addContactMaterial(new CANNON.ContactMaterial(matLane, matBall, {
+  friction: 0.03, restitution: 0.02,
+}));
+world.addContactMaterial(new CANNON.ContactMaterial(matLane, matPin, {
+  friction: 0.25, restitution: 0.05,
+}));
+world.addContactMaterial(new CANNON.ContactMaterial(matBall, matPin, {
+  friction: 0.04, restitution: 0.45,
+}));
+world.addContactMaterial(new CANNON.ContactMaterial(matPin, matPin, {
+  friction: 0.1, restitution: 0.5,
+}));
+world.addContactMaterial(new CANNON.ContactMaterial(matGutter, matBall, {
+  friction: 0.08, restitution: 0.1,
+}));
+
+// =====================================================================
+//  TEXTURES (procedurally drawn — no external assets needed)
+// =====================================================================
+function makeWoodTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 1024;
+  const g = c.getContext("2d");
+  const base = g.createLinearGradient(0, 0, 256, 0);
+  base.addColorStop(0, "#caa06a");
+  base.addColorStop(0.5, "#dcb47e");
+  base.addColorStop(1, "#c79a62");
+  g.fillStyle = base; g.fillRect(0, 0, 256, 1024);
+  // plank lines down the length
+  for (let x = 8; x < 256; x += 16) {
+    g.strokeStyle = "rgba(90,60,30,0.35)";
+    g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 1024); g.stroke();
+  }
+  // grain noise
+  for (let i = 0; i < 5000; i++) {
+    g.fillStyle = `rgba(80,50,25,${Math.random() * 0.06})`;
+    const x = Math.random() * 256, y = Math.random() * 1024;
+    g.fillRect(x, y, 1 + Math.random() * 2, 4 + Math.random() * 20);
+  }
+  // glossy sheen streaks
+  for (let i = 0; i < 40; i++) {
+    g.fillStyle = `rgba(255,255,255,${Math.random() * 0.04})`;
+    g.fillRect(Math.random() * 256, 0, 1, 1024);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+
+function makeArrowTexture() {
+  // the targeting arrows + dots near the foul line
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 1024;
+  const g = c.getContext("2d");
+  g.clearRect(0, 0, 256, 1024);
+  g.fillStyle = "#7a4a1e";
+  // 7 aiming arrows, ~1/3 down the lane
+  const ay = 760;
+  const positions = [40, 76, 112, 128, 144, 180, 216];
+  positions.forEach((x, i) => {
+    const dist = Math.abs(i - 3);
+    const len = 28 + dist * 10;
+    g.beginPath();
+    g.moveTo(x, ay);
+    g.lineTo(x - 7, ay + len);
+    g.lineTo(x + 7, ay + len);
+    g.closePath(); g.fill();
+  });
+  return new THREE.CanvasTexture(c);
+}
+
+const woodTex = makeWoodTexture();
+woodTex.repeat.set(1, 9);
+const arrowTex = makeArrowTexture();
+
+// =====================================================================
+//  BUILD THE LANE  (visual + physics)
+// =====================================================================
+const laneGroup = new THREE.Group();
+scene.add(laneGroup);
+
+// --- Lane surface ---
+const laneMat = new THREE.MeshStandardMaterial({
+  map: woodTex, roughness: 0.28, metalness: 0.0,
+});
+const laneGeo = new THREE.BoxGeometry(LANE_WIDTH, 0.1, LANE_LEN + 2);
+const laneMesh = new THREE.Mesh(laneGeo, laneMat);
+laneMesh.position.set(0, -0.05, LANE_LEN / 2);
+laneMesh.receiveShadow = true;
+laneGroup.add(laneMesh);
+
+// arrows decal floating just above the lane
+const arrowMat = new THREE.MeshBasicMaterial({ map: arrowTex, transparent: true, opacity: 0.55 });
+const arrowMesh = new THREE.Mesh(new THREE.PlaneGeometry(LANE_WIDTH, LANE_LEN + 2), arrowMat);
+arrowMesh.rotation.x = -Math.PI / 2;
+arrowMesh.position.set(0, 0.002, LANE_LEN / 2);
+laneGroup.add(arrowMesh);
+
+// --- Gutters (visual + physics floor lower than lane) ---
+const gutterMat = new THREE.MeshStandardMaterial({ color: 0x2b3242, roughness: 0.6, metalness: 0.2 });
+function makeGutter(sign) {
+  const geo = new THREE.BoxGeometry(GUTTER_W, 0.12, LANE_LEN + 2);
+  const m = new THREE.Mesh(geo, gutterMat);
+  m.position.set(sign * (LANE_WIDTH / 2 + GUTTER_W / 2), -0.16, LANE_LEN / 2);
+  m.receiveShadow = true;
+  laneGroup.add(m);
+}
+makeGutter(1); makeGutter(-1);
+
+// --- Side rails / approach trim ---
+const railMat = new THREE.MeshStandardMaterial({ color: 0x12151f, roughness: 0.4, metalness: 0.5 });
+function makeRail(sign) {
+  const geo = new THREE.BoxGeometry(0.06, 0.22, LANE_LEN + 2);
+  const m = new THREE.Mesh(geo, railMat);
+  m.position.set(sign * (LANE_WIDTH / 2 + GUTTER_W + 0.03), 0.0, LANE_LEN / 2);
+  m.castShadow = true; m.receiveShadow = true;
+  laneGroup.add(m);
+}
+makeRail(1); makeRail(-1);
+
+// --- Foul-line approach floor (behind the lane, where the player stands) ---
+const approachMat = new THREE.MeshStandardMaterial({ color: 0x191c26, roughness: 0.8 });
+const approach = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, 6), approachMat);
+approach.position.set(0, -0.05, -3);
+approach.receiveShadow = true;
+scene.add(approach);
+// red foul line
+const foulLine = new THREE.Mesh(
+  new THREE.PlaneGeometry(LANE_WIDTH + GUTTER_W * 2, 0.04),
+  new THREE.MeshBasicMaterial({ color: 0xcc2222 })
+);
+foulLine.rotation.x = -Math.PI / 2;
+foulLine.position.set(0, 0.003, FOUL_Z);
+laneGroup.add(foulLine);
+
+// --- Pin deck back wall & masking unit ---
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x0c1020, roughness: 0.9 });
+const backWall = new THREE.Mesh(new THREE.BoxGeometry(8, 5, 0.3), wallMat);
+backWall.position.set(0, 2, PIN_Z + 1.6);
+backWall.receiveShadow = true;
+scene.add(backWall);
+// glowing accent strip on the masking unit
+const accent = new THREE.Mesh(
+  new THREE.BoxGeometry(LANE_WIDTH + GUTTER_W * 2 + 0.2, 0.18, 0.05),
+  new THREE.MeshStandardMaterial({ color: 0x2a6cff, emissive: 0x1a4fff, emissiveIntensity: 1.4 })
+);
+accent.position.set(0, 1.4, PIN_Z + 1.45);
+scene.add(accent);
+
+// =====================================================================
+//  PHYSICS: lane floor, gutter floors, walls
+// =====================================================================
+// Lane floor (top at y=0)
+function addBox(halfExtents, pos, material, isStatic = true) {
+  const body = new CANNON.Body({ mass: isStatic ? 0 : 1, material });
+  body.addShape(new CANNON.Box(new CANNON.Vec3(...halfExtents)));
+  body.position.set(...pos);
+  world.addBody(body);
+  return body;
+}
+addBox([LANE_WIDTH / 2, 0.05, (LANE_LEN + 2) / 2], [0, -0.05, LANE_LEN / 2], matLane);
+// Gutter floors (lower so the ball drops in and rolls harmlessly to the pit)
+addBox([GUTTER_W / 2, 0.05, (LANE_LEN + 2) / 2], [ (LANE_WIDTH/2+GUTTER_W/2), -0.18, LANE_LEN/2], matGutter);
+addBox([GUTTER_W / 2, 0.05, (LANE_LEN + 2) / 2], [-(LANE_WIDTH/2+GUTTER_W/2), -0.18, LANE_LEN/2], matGutter);
+// Inner lip walls between lane and gutter (low, so a true gutter ball stays in the gutter)
+addBox([0.012, 0.05, (LANE_LEN + 2) / 2], [ (LANE_WIDTH/2), 0.0, LANE_LEN/2], matLane);
+addBox([0.012, 0.05, (LANE_LEN + 2) / 2], [-(LANE_WIDTH/2), 0.0, LANE_LEN/2], matLane);
+// Outer gutter walls (tall, contain everything)
+addBox([0.05, 0.3, (LANE_LEN + 2) / 2], [ (LANE_WIDTH/2+GUTTER_W), 0.2, LANE_LEN/2], matLane);
+addBox([0.05, 0.3, (LANE_LEN + 2) / 2], [-(LANE_WIDTH/2+GUTTER_W), 0.2, LANE_LEN/2], matLane);
+// Back wall (stops ball & pins at the pit)
+addBox([4, 2.5, 0.15], [0, 1.5, PIN_Z + 1.6], matLane);
+// Pit floor (slightly below lane, behind pins, to catch fallen pins/ball)
+addBox([4, 0.05, 1.5], [0, -0.25, PIN_Z + 0.9], matLane);
+
+// =====================================================================
+//  BOWLING BALL
+// =====================================================================
+const ballGroup = new THREE.Group();
+const ballGeo = new THREE.SphereGeometry(BALL_R, 48, 48);
+const ballMat = new THREE.MeshPhysicalMaterial({
+  color: 0x14122a, roughness: 0.12, metalness: 0.1,
+  clearcoat: 1.0, clearcoatRoughness: 0.06,
+});
+// swirl effect via emissive vertex tint
+const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+ballMesh.castShadow = true;
+ballGroup.add(ballMesh);
+
+// finger holes (three small dark cylinders pressed into the surface)
+const holeMat = new THREE.MeshStandardMaterial({ color: 0x05040a, roughness: 0.9 });
+const holeGeo = new THREE.CylinderGeometry(0.011, 0.011, 0.05, 12);
+const holeOffsets = [[0, 0.02], [-0.022, -0.012], [0.022, -0.012]];
+holeOffsets.forEach(([hx, hy]) => {
+  const h = new THREE.Mesh(holeGeo, holeMat);
+  // place on the "top" of the ball facing up toward camera-ish
+  h.position.set(hx, BALL_R - 0.018, hy);
+  h.rotation.x = 0;
+  ballGroup.add(h);
+});
+scene.add(ballGroup);
+
+const BALL_MASS = 6.4; // kg (~14 lb)
+const ballBody = new CANNON.Body({
+  mass: BALL_MASS, material: matBall,
+  shape: new CANNON.Sphere(BALL_R),
+  linearDamping: 0.015, angularDamping: 0.015,
+});
+ballBody.allowSleep = false;
+world.addBody(ballBody);
+
+// =====================================================================
+//  PINS
+// =====================================================================
+// Standard 10-pin triangle. Row 1 = head pin (closest to bowler), back row = 4.
+// Pin numbering (USBC):  7 8 9 10 / 4 5 6 / 2 3 / 1
+function pinLayout() {
+  const pins = [];
+  // rows: distance back from head pin
+  const rowZ = [0, 1, 2, 3].map(r => PIN_Z + r * (PIN_SPACING * Math.cos(Math.PI / 6)));
+  // row 0: 1 pin (head). row1: 2. row2: 3. row3: 4.
+  const rows = [
+    [0],            // pin 1
+    [-0.5, 0.5],    // pins 2,3
+    [-1, 0, 1],     // pins 4,5,6
+    [-1.5, -0.5, 0.5, 1.5], // pins 7,8,9,10
+  ];
+  rows.forEach((cols, r) => {
+    cols.forEach(c => {
+      pins.push({ x: c * PIN_SPACING, z: rowZ[r] });
+    });
+  });
+  return pins; // 10 entries, in order 1,2,3,4,5,6,7,8,9,10
+}
+const PIN_POSITIONS = pinLayout();
+
+// Pin visual: a lathe-turned profile (classic bowling pin silhouette).
+function makePinMesh() {
+  const pts = [];
+  // profile from base (y=0) to top, radius in meters. Classic pin curve.
+  const profile = [
+    [0.000, 0.030], [0.020, 0.046], [0.055, 0.055], [0.090, 0.058],
+    [0.130, 0.050], [0.175, 0.038], [0.210, 0.030], [0.250, 0.030],
+    [0.290, 0.040], [0.320, 0.044], [0.350, 0.040], [0.372, 0.028],
+    [0.380, 0.012],
+  ];
+  profile.forEach(([y, r]) => pts.push(new THREE.Vector2(r, y)));
+  const geo = new THREE.LatheGeometry(pts, 28);
+  const mat = new THREE.MeshStandardMaterial({ color: 0xf6f4ef, roughness: 0.35, metalness: 0.02 });
+  const pin = new THREE.Mesh(geo, mat);
+  pin.castShadow = true; pin.receiveShadow = true;
+
+  // red neck stripes
+  const stripeMat = new THREE.MeshStandardMaterial({ color: 0xcc2a2a, roughness: 0.4 });
+  const s1 = new THREE.Mesh(new THREE.CylinderGeometry(0.0445, 0.0445, 0.018, 24), stripeMat);
+  s1.position.y = 0.255; pin.add(s1);
+  const s2 = new THREE.Mesh(new THREE.CylinderGeometry(0.041, 0.041, 0.014, 24), stripeMat);
+  s2.position.y = 0.285; pin.add(s2);
+  return pin;
+}
+
+const PIN_MASS = 1.5; // kg (~3.3 lb)
+const pins = []; // { mesh, body, home: {x,z}, standing }
+
+function buildPins() {
+  PIN_POSITIONS.forEach((p) => {
+    const mesh = makePinMesh();
+    scene.add(mesh);
+    // compound body approximating the pin: a capsule-ish stack of cylinders.
+    const body = new CANNON.Body({
+      mass: PIN_MASS, material: matPin,
+      linearDamping: 0.2, angularDamping: 0.35,
+    });
+    // base, body, neck as stacked cylinders for stable-but-tippable behavior
+    addPinShapes(body);
+    body.position.set(p.x, 0.0, p.z);
+    body.sleepSpeedLimit = 0.12;
+    body.sleepTimeLimit = 0.4;
+    world.addBody(body);
+    pins.push({ mesh, body, home: { x: p.x, z: p.z }, standing: true });
+  });
+}
+
+function addPinShapes(body) {
+  // cannon-es Cylinder is aligned along its local Y axis (height runs along Y),
+  // which already matches our upright visual pins — so NO extra rotation. Adding
+  // one would lay the collision cylinders on their sides (logs, not pins).
+  const segs = [
+    { r: 0.05, h: 0.10, y: 0.05 },   // base
+    { r: 0.035, h: 0.16, y: 0.20 },  // middle
+    { r: 0.045, h: 0.10, y: 0.33 },  // neck/head
+  ];
+  segs.forEach(s => {
+    const shape = new CANNON.Cylinder(s.r, s.r, s.h, 10);
+    body.addShape(shape, new CANNON.Vec3(0, s.y, 0)); // identity orientation = vertical
+  });
+  // Low, stacked profile → low center of mass → pins stand but tip realistically.
+}
+
+buildPins();
+
+// =====================================================================
+//  AIM GUIDE (arrow that shows direction + spin)
+// =====================================================================
+const aimGroup = new THREE.Group();
+scene.add(aimGroup);
+const aimLineMat = new THREE.MeshBasicMaterial({ color: 0x4ad6ff, transparent: true, opacity: 0.85 });
+const aimLine = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.001, 1), aimLineMat);
+aimGroup.add(aimLine);
+const aimHead = new THREE.Mesh(
+  new THREE.ConeGeometry(0.06, 0.14, 4),
+  new THREE.MeshBasicMaterial({ color: 0x4ad6ff })
+);
+aimHead.rotation.x = Math.PI / 2;
+aimGroup.add(aimHead);
+aimGroup.visible = false;
+
+// =====================================================================
+//  GAME STATE & SCORING
+// =====================================================================
+// frames[i].rolls = [] of pin counts. 10 frames.
+const game = {
+  frames: [],
+  current: 0,      // frame index 0..9
+  rollInFrame: 0,  // 0 or 1 (or up to 2 in 10th)
+  pinsStandingAtRollStart: 10,
+  over: false,
+};
+
+function newGame() {
+  game.frames = Array.from({ length: 10 }, () => ({ rolls: [] }));
+  game.current = 0;
+  game.rollInFrame = 0;
+  game.over = false;
+  resetPins(true);
+  resetBall();
+  phase = "aim";
+  renderScoreboard();
+  els.overlay.classList.remove("show");
+  setStatus(`Frame 1`, "Drag back on the lane to aim & power, then release");
+}
+
+// --- Standard 10-pin scoring with strike/spare bonuses & open 10th frame ---
+function computeScores() {
+  const f = game.frames;
+  const rollsFlat = [];
+  // flatten with frame boundaries for bonus lookups
+  f.forEach(fr => fr.rolls.forEach(r => rollsFlat.push(r)));
+
+  const cum = new Array(10).fill(null);
+  let total = 0;
+  // We compute per-frame using a roll pointer over the flat list, respecting
+  // standard 10-pin rules (this is the canonical "rolls array" algorithm).
+  let ri = 0;
+  for (let frame = 0; frame < 10; frame++) {
+    const fr = f[frame];
+    if (fr.rolls.length === 0) { cum[frame] = null; continue; }
+
+    if (frame < 9) {
+      const first = rollsFlat[ri];
+      if (first === 10) {
+        // strike: 10 + next two rolls
+        const b1 = rollsFlat[ri + 1], b2 = rollsFlat[ri + 2];
+        if (b1 == null || b2 == null) { cum[frame] = null; ri += 1; break; }
+        total += 10 + b1 + b2;
+        cum[frame] = total;
+        ri += 1;
+      } else {
+        const second = rollsFlat[ri + 1];
+        if (second == null) { cum[frame] = null; break; }
+        if (first + second === 10) {
+          // spare: 10 + next one roll
+          const b1 = rollsFlat[ri + 2];
+          if (b1 == null) { cum[frame] = null; ri += 2; break; }
+          total += 10 + b1;
+        } else {
+          total += first + second;
+        }
+        cum[frame] = total;
+        ri += 2;
+      }
+    } else {
+      // 10th frame: simply sum its own rolls (already includes bonus balls)
+      const sum = fr.rolls.reduce((a, b) => a + b, 0);
+      if (frameComplete(9)) { total += sum; cum[frame] = total; }
+      else { cum[frame] = null; }
+    }
+  }
+  return { cum, total };
+}
+
+function frameComplete(idx) {
+  const fr = game.frames[idx];
+  if (idx < 9) {
+    if (fr.rolls.length === 0) return false;
+    if (fr.rolls[0] === 10) return true;       // strike
+    return fr.rolls.length === 2;
+  } else {
+    // 10th frame
+    const r = fr.rolls;
+    if (r.length < 2) return false;
+    if (r[0] === 10 || r[0] + r[1] === 10) return r.length === 3; // strike or spare → 3 balls
+    return r.length === 2; // open frame → 2 balls
+  }
+}
+
+function renderScoreboard() {
+  const { cum, total } = computeScores();
+  els.scoreboard.innerHTML = "";
+  for (let i = 0; i < 10; i++) {
+    const fr = game.frames[i];
+    const div = document.createElement("div");
+    div.className = "frame" + (i === 9 ? " tenth" : "") + (i === game.current && !game.over ? " active" : "");
+
+    const head = document.createElement("div");
+    head.className = "frame-head"; head.textContent = i + 1;
+    div.appendChild(head);
+
+    const rolls = document.createElement("div");
+    rolls.className = "rolls";
+    const nCells = i === 9 ? 3 : 2;
+    for (let r = 0; r < nCells; r++) {
+      const cell = document.createElement("div");
+      cell.className = "roll";
+      const val = fr.rolls[r];
+      const prev = r > 0 ? fr.rolls[r - 1] : null;
+      cell.textContent = tenthAwareSymbol(i, r, val, prev, fr.rolls);
+      rolls.appendChild(cell);
+    }
+    div.appendChild(rolls);
+
+    const cumDiv = document.createElement("div");
+    cumDiv.className = "cum";
+    cumDiv.textContent = cum[i] == null ? "" : cum[i];
+    div.appendChild(cumDiv);
+
+    els.scoreboard.appendChild(div);
+  }
+  // running total box
+  const tb = document.createElement("div");
+  tb.className = "total-box";
+  tb.innerHTML = `<div class="lab">TOTAL</div><div class="val">${total}</div>`;
+  els.scoreboard.appendChild(tb);
+}
+
+// Cleaner symbol logic for both normal and 10th frames.
+function tenthAwareSymbol(frameIdx, rollIdx, val, prev, allRolls) {
+  if (val == null) return "";
+  if (val === 10) return "X";
+  if (frameIdx < 9) {
+    if (rollIdx === 1 && prev != null && prev + val === 10) return "/";
+  } else {
+    // 10th frame: a "/" appears when this ball completes a 10 with the *previous*
+    // ball, and the previous ball was not itself a strike.
+    if (rollIdx >= 1 && prev != null && prev !== 10 && prev + val === 10) return "/";
+  }
+  if (val === 0) return "-";
+  return String(val);
+}
+
+// =====================================================================
+//  ROLL / TURN FLOW
+// =====================================================================
+let phase = "loading"; // loading | aim | rolling | settling | resetting | gameover
+let settleTimer = 0;
+let rollStartTime = 0;
+
+function pinsStanding() {
+  return pins.filter(p => isPinStanding(p)).length;
+}
+
+function isPinStanding(p) {
+  // standing = upright (small tilt) AND still near its home spot AND above lane.
+  const up = new CANNON.Vec3(0, 1, 0);
+  const local = new CANNON.Vec3(0, 1, 0);
+  p.body.quaternion.vmult(local, local);
+  const tilt = local.dot(up); // 1 = perfectly upright
+  const dx = p.body.position.x - p.home.x;
+  const dz = p.body.position.z - p.home.z;
+  const moved = Math.sqrt(dx * dx + dz * dz);
+  const aboveLane = p.body.position.y > -0.05;
+  return tilt > 0.7 && moved < 0.12 && aboveLane;
+}
+
+function clearKnockedPins() {
+  // remove pins that are no longer standing (knocked / off lane) from physics+scene
+  pins.forEach(p => {
+    if (!p.standing) return;
+    if (!isPinStanding(p)) {
+      p.standing = false;
+    }
+  });
+}
+
+function resetPins(all) {
+  pins.forEach((p, i) => {
+    if (!all && !p.standing) {
+      // leave knocked pins removed (hidden) between rolls of the same frame
+      p.mesh.visible = false;
+      // park the body out of the way
+      p.body.sleep();
+      p.body.position.set(p.home.x, -3, p.home.z);
+      return;
+    }
+    p.standing = true;
+    p.mesh.visible = true;
+    p.body.wakeUp();
+    p.body.velocity.setZero();
+    p.body.angularVelocity.setZero();
+    p.body.position.set(p.home.x, 0.0, p.home.z);
+    p.body.quaternion.set(0, 0, 0, 1);
+    syncPin(p);
+  });
+}
+
+function resetBall() {
+  ballBody.wakeUp();
+  ballBody.velocity.setZero();
+  ballBody.angularVelocity.setZero();
+  ballBody.position.set(0, BALL_R, FOUL_Z - 0.4);
+  ballBody.quaternion.set(0, 0, 0, 1);
+  ballGroup.position.copy(ballBody.position);
+  camFollow = false;
+}
+
+// =====================================================================
+//  INPUT — mouse drag to aim & power
+// =====================================================================
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0 lane plane
+let dragging = false;
+let dragStart = null; // THREE.Vector3 on lane
+let dragNow = null;
+let aimDir = new THREE.Vector2(0, 1); // x (side), z (forward)
+let power = 0;
+let spin = 0; // -1..1, hook left/right
+
+const MAX_POWER = 1;
+const POWER_DRAG_LEN = 3.2; // meters of drag for full power
+
+function screenToLane(clientX, clientY) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = new THREE.Vector3();
+  const ok = raycaster.ray.intersectPlane(dragPlane, hit);
+  return ok ? hit : null;
+}
+
+function onDown(clientX, clientY) {
+  if (phase !== "aim" || game.over) return;
+  const p = screenToLane(clientX, clientY);
+  if (!p) return;
+  dragging = true;
+  dragStart = p.clone();
+  dragNow = p.clone();
+  renderer.domElement.classList.add("dragging");
+  els.powerWrap.classList.add("show");
+  aimGroup.visible = true;
+}
+
+function onMove(clientX, clientY) {
+  if (!dragging) return;
+  const p = screenToLane(clientX, clientY);
+  if (!p) return;
+  dragNow = p.clone();
+  updateAimFromDrag();
+}
+
+function updateAimFromDrag() {
+  // Drag BACKWARD (toward the bowler, -z) sets power & direction.
+  // The throw direction is opposite the drag: forward + steer.
+  const dx = dragStart.x - dragNow.x; // how far we pulled in x
+  const dz = dragStart.z - dragNow.z; // pulling toward bowler → dz>0
+  const pull = Math.max(0, dz);       // only backward pull counts for power
+  power = Math.min(MAX_POWER, pull / POWER_DRAG_LEN);
+
+  // Aim: forward vector steered by sideways pull. More side pull → more angle + spin.
+  const steer = THREE.MathUtils.clamp(-dx * 0.9, -0.55, 0.55);
+  aimDir.set(steer, 1).normalize();
+  spin = THREE.MathUtils.clamp(-dx * 1.6, -1, 1); // sideways drag adds hook spin
+
+  // visual: position aim guide at ball, length scales with power
+  const len = 0.6 + power * 2.6;
+  aimGroup.position.copy(ballBody.position);
+  aimGroup.position.y = 0.02;
+  const ang = Math.atan2(aimDir.x, aimDir.y);
+  aimGroup.rotation.y = ang;
+  aimLine.scale.z = len;
+  aimLine.position.set(0, 0, len / 2);
+  aimHead.position.set(0, 0, len);
+  // color shifts with power
+  const col = new THREE.Color().setHSL(0.33 - power * 0.33, 0.9, 0.55);
+  aimLineMat.color.copy(col); aimHead.material.color.copy(col);
+
+  els.powerBar.style.width = `${power * 100}%`;
+
+  const spinTxt = Math.abs(spin) < 0.12 ? "straight" : (spin > 0 ? "hook ◀" : "hook ▶");
+  setStatus(els.statusBig.textContent, `Power ${Math.round(power * 100)}%  ·  ${spinTxt}  ·  release to bowl`);
+}
+
+function onUp() {
+  if (!dragging) return;
+  dragging = false;
+  renderer.domElement.classList.remove("dragging");
+  els.powerWrap.classList.remove("show");
+  aimGroup.visible = false;
+
+  if (power < 0.06) {
+    // too weak — treat as a cancel, keep aiming
+    setStatus(els.statusBig.textContent, "Pull back further to build power — release to bowl");
+    return;
+  }
+  launchBall();
+}
+
+function launchBall() {
+  phase = "rolling";
+  rollStartTime = performance.now();
+  game.pinsStandingAtRollStart = pins.filter(p => p.standing).length;
+
+  // Convert power → forward speed. Realistic bowling ~5–9 m/s.
+  const speed = 5.0 + power * 5.5;
+  const dir = new THREE.Vector3(aimDir.x, 0, aimDir.y).normalize();
+  ballBody.wakeUp();
+  ballBody.velocity.set(dir.x * speed, 0, dir.z * speed);
+
+  // Spin: angular velocity about Y produces a hooking curve as friction bites.
+  // Also roll-forward spin about X for realistic rolling.
+  const rollSpin = speed / BALL_R; // rolling without slipping baseline
+  ballBody.angularVelocity.set(rollSpin * 0.6, spin * 9.0, 0);
+
+  camFollow = true;
+  setStatus(els.statusBig.textContent, "🎳 Rolling…");
+}
+
+// pointer + touch events
+const cv = renderer.domElement;
+cv.addEventListener("mousedown", e => onDown(e.clientX, e.clientY));
+window.addEventListener("mousemove", e => onMove(e.clientX, e.clientY));
+window.addEventListener("mouseup", onUp);
+cv.addEventListener("touchstart", e => { const t = e.touches[0]; onDown(t.clientX, t.clientY); e.preventDefault(); }, { passive: false });
+window.addEventListener("touchmove", e => { if (!dragging) return; const t = e.touches[0]; onMove(t.clientX, t.clientY); e.preventDefault(); }, { passive: false });
+window.addEventListener("touchend", e => { onUp(); e.preventDefault(); }, { passive: false });
+
+// =====================================================================
+//  ROLL COMPLETION DETECTION & SCORING ADVANCE
+// =====================================================================
+function ballStopped() {
+  const v = ballBody.velocity.length();
+  const past = ballBody.position.z > PIN_Z + 0.5;
+  const inGutterPit = ballBody.position.y < -0.1;
+  return (v < 0.4 && ballBody.position.z > 2) || past || inGutterPit;
+}
+
+function allPinsAsleepOrFallen() {
+  return pins.every(p => {
+    if (!p.standing) return true;
+    return p.body.velocity.length() < 0.15 && p.body.angularVelocity.length() < 0.2;
+  });
+}
+
+function finishRoll() {
+  // count how many *additional* pins fell this roll
+  const standingBefore = game.pinsStandingAtRollStart;
+  clearKnockedPins();
+  const standingNow = pins.filter(p => p.standing).length;
+  const knocked = standingBefore - standingNow;
+
+  recordRoll(knocked);
+}
+
+function recordRoll(knocked) {
+  const fIdx = game.current;
+  const fr = game.frames[fIdx];
+  fr.rolls.push(knocked);
+
+  // celebratory text
+  announceRoll(fIdx, fr, knocked);
+
+  renderScoreboard();
+
+  // Decide what happens next.
+  if (fIdx < 9) {
+    const strike = fr.rolls[0] === 10;
+    const twoBalls = fr.rolls.length === 2;
+    if (strike || twoBalls) {
+      advanceFrame();
+    } else {
+      // second ball of the frame: leave standing pins, reset only ball
+      nextBallSameFrame();
+    }
+  } else {
+    handleTenthFrame(fr);
+  }
+}
+
+function handleTenthFrame(fr) {
+  const r = fr.rolls;
+  const done = frameComplete(9);
+  if (done) {
+    endGame();
+    return;
+  }
+  // Not done — figure out whether pins should be re-racked.
+  // Rerack if last ball was a strike, or if a spare just completed (sum of last two = 10 boundary).
+  const justStrike = r[r.length - 1] === 10;
+  let justSpare = false;
+  if (r.length === 2 && r[0] !== 10 && r[0] + r[1] === 10) justSpare = true;
+  // (after a spare on balls 1&2, ball 3 gets fresh pins)
+  if (justStrike || justSpare) {
+    // fresh rack for the bonus ball
+    pins.forEach(p => { p.standing = true; });
+    resetPins(true);
+  } else if (r.length === 1 && r[0] === 10) {
+    // first ball strike → fresh rack
+    pins.forEach(p => { p.standing = true; });
+    resetPins(true);
+  }
+  // else keep remaining pins (open second ball not yet thrown won't reach here)
+  resetBall();
+  game.rollInFrame = r.length;
+  phase = "aim";
+  setStatus(`Frame 10 · Ball ${r.length + 1}`, "Drag back to aim & power, release to bowl");
+}
+
+function nextBallSameFrame() {
+  resetPins(false); // hide knocked pins, keep standing ones
+  resetBall();
+  game.rollInFrame = 1;
+  phase = "aim";
+  const remaining = pins.filter(p => p.standing).length;
+  setStatus(`Frame ${game.current + 1} · Ball 2`, `${remaining} pin${remaining === 1 ? "" : "s"} standing — pick up the spare!`);
+}
+
+function advanceFrame() {
+  game.current++;
+  game.rollInFrame = 0;
+  if (game.current > 9) { endGame(); return; }
+  resetPins(true);
+  resetBall();
+  phase = "aim";
+  setStatus(`Frame ${game.current + 1}`, "Fresh rack — drag back to aim & power, release to bowl");
+  renderScoreboard();
+}
+
+function announceRoll(fIdx, fr, knocked) {
+  let big = `Frame ${fIdx + 1}`;
+  let small = "";
+  if (fr.rolls.length === 1 && knocked === 10) {
+    big = "STRIKE! 🎳"; small = "All ten down on the first ball!";
+    flashStatus();
+  } else if (fr.rolls.length === 2 && fr.rolls[0] !== 10 && fr.rolls[0] + fr.rolls[1] === 10) {
+    big = "SPARE! ✨"; small = "Cleaned it up!";
+    flashStatus();
+  } else if (knocked === 0) {
+    big = "Gutter…"; small = fIdx <= 9 ? "No pins that time." : "";
+  } else {
+    small = `${knocked} pin${knocked === 1 ? "" : "s"} down`;
+  }
+  setStatus(big, small);
+}
+
+function endGame() {
+  game.over = true;
+  phase = "gameover";
+  const { total } = computeScores();
+  renderScoreboard();
+  els.ovScore.textContent = total;
+  let title = "GAME OVER", sub = "Nice rolling!";
+  if (total === 300) { title = "PERFECT GAME!! 🏆"; sub = "Twelve strikes. Flawless."; }
+  else if (total >= 200) { title = "EXCELLENT! 🌟"; sub = "Pro-level scoring."; }
+  else if (total >= 150) { title = "GREAT GAME! 👏"; sub = "Above average — well bowled."; }
+  else if (total >= 100) { title = "SOLID GAME"; sub = "Triple digits!"; }
+  else { title = "GAME OVER"; sub = "Keep practicing — you'll get there!"; }
+  els.ovTitle.textContent = title;
+  els.ovSub.textContent = `Final score: ${total} · ${sub}`;
+  els.overlay.classList.add("show");
+  setStatus("Game Over", `Final score: ${total}`);
+}
+
+// =====================================================================
+//  STATUS HELPERS
+// =====================================================================
+let flashTimer = 0;
+function setStatus(big, small) {
+  els.statusBig.textContent = big;
+  els.statusSmall.textContent = small || "";
+}
+function flashStatus() {
+  els.statusBig.classList.add("flash");
+  flashTimer = 1.2;
+}
+
+// =====================================================================
+//  SYNC HELPERS (physics → three)
+// =====================================================================
+function syncBall() {
+  ballGroup.position.copy(ballBody.position);
+  ballGroup.quaternion.copy(ballBody.quaternion);
+}
+function syncPin(p) {
+  p.mesh.position.copy(p.body.position);
+  p.mesh.quaternion.copy(p.body.quaternion);
+}
+
+// =====================================================================
+//  CAMERA UPDATE
+// =====================================================================
+function updateCamera(dt) {
+  let targetPos, targetLook;
+  if (camMode === "top") {
+    targetPos = CAM_VIEWS.top.pos.clone();
+    targetLook = CAM_VIEWS.top.look.clone();
+  } else {
+    targetPos = CAM_VIEWS.behind.pos.clone();
+    targetLook = CAM_VIEWS.behind.look.clone();
+    if (camFollow && phase === "rolling") {
+      // glide behind/above the ball as it travels
+      const bz = ballBody.position.z;
+      targetPos = new THREE.Vector3(ballBody.position.x * 0.4, 1.7, bz - 2.6);
+      targetLook = new THREE.Vector3(ballBody.position.x * 0.5, 0.3, bz + 4);
+    }
+  }
+  const k = 1 - Math.pow(0.0015, dt); // smooth follow
+  camPos.lerp(targetPos, k);
+  camLook.lerp(targetLook, k);
+  camera.position.copy(camPos);
+  camera.lookAt(camLook);
+}
+
+// =====================================================================
+//  MAIN LOOP
+// =====================================================================
+const clock = new THREE.Clock();
+let accumulator = 0;
+const FIXED = 1 / 120;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  // fixed-step physics
+  accumulator += dt;
+  let steps = 0;
+  while (accumulator >= FIXED && steps < 8) {
+    applyHookForce();
+    world.step(FIXED);
+    accumulator -= FIXED;
+    steps++;
+  }
+
+  // sync visuals
+  syncBall();
+  pins.forEach(syncPin);
+
+  updateCamera(dt);
+
+  // flash timer
+  if (flashTimer > 0) {
+    flashTimer -= dt;
+    if (flashTimer <= 0) els.statusBig.classList.remove("flash");
+  }
+
+  // phase transitions
+  if (phase === "rolling") {
+    // safety timeout so a stuck ball can't hang the turn
+    const elapsed = (performance.now() - rollStartTime) / 1000;
+    if (ballStopped() || elapsed > 8) {
+      phase = "settling";
+      settleTimer = 0;
+    }
+  } else if (phase === "settling") {
+    settleTimer += dt;
+    // wait for pins to stop tumbling (or a max settle time)
+    if ((allPinsAsleepOrFallen() && settleTimer > 0.5) || settleTimer > 3.0) {
+      phase = "scoring";
+      finishRoll();
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+// =====================================================================
+//  HOOK PHYSICS — make spin curve the ball as it loses sliding friction.
+// =====================================================================
+function applyHookForce() {
+  if (phase !== "rolling") return;
+  // Only meaningful while ball is on the lane (not in gutter/pit).
+  if (ballBody.position.y > 0.05 || ballBody.position.y < -0.05) {
+    // still apply a gentle lateral force from residual spin
+  }
+  const spinY = ballBody.angularVelocity.y;
+  if (Math.abs(spinY) < 0.2) return;
+  const v = ballBody.velocity;
+  const speed = Math.hypot(v.x, v.z);
+  if (speed < 0.5) return;
+  // lateral (perpendicular to travel) force proportional to spin & speed
+  const dirx = v.x / speed, dirz = v.z / speed;
+  // perpendicular in xz-plane
+  const px = -dirz, pz = dirx;
+  const hookMag = spinY * speed * 0.16 * BALL_MASS;
+  ballBody.applyForce(new CANNON.Vec3(px * hookMag, 0, pz * hookMag), ballBody.position);
+  // spin decays as it "grips"
+  ballBody.angularVelocity.y *= 0.992;
+}
+
+// =====================================================================
+//  UI BUTTONS / RESIZE
+// =====================================================================
+els.resetBtn.addEventListener("click", () => newGame());
+els.ovBtn.addEventListener("click", () => newGame());
+els.camBtn.addEventListener("click", () => {
+  camMode = camMode === "behind" ? "top" : "behind";
+  els.camBtn.textContent = "View: " + (camMode === "behind" ? "Behind" : "Top");
+});
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// keyboard convenience (optional)
+window.addEventListener("keydown", e => {
+  if (e.key === "r" || e.key === "R") newGame();
+  if (e.key === "c" || e.key === "C") els.camBtn.click();
+});
+
+// =====================================================================
+//  BOOT
+// =====================================================================
+function boot() {
+  els.loader.style.display = "none";
+  newGame();
+  clock.start();
+  animate();
+}
+
+// Catch a failed module/CDN load and tell the player instead of a blank screen.
+window.addEventListener("error", (e) => {
+  if (els.loader.style.display !== "none") {
+    els.loadErr.textContent = "Failed to load 3D libraries (network?). Check your connection and reload. " + (e.message || "");
+  }
+});
+
+boot();
+</script>
+</body>
+</html>
