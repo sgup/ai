@@ -1,0 +1,98 @@
+--- /Users/shridhar/Code/ai/experiments/swe-bench-mini/instances/billing-idempotency/payments.py	2026-06-17 15:46:16
++++ /tmp/swe2/v4/payments.py	2026-06-17 15:49:34
+@@ -6,16 +6,35 @@
+ charge. Different idempotency keys for the same order are distinct, intentional
+ charges (the caller chose a new key).
+ """
++import hashlib
++import threading
+ import time
+-import uuid
+ 
+ from processor import ProcessorTimeout
+ 
+ 
++def _derive_processor_key(order_id, idempotency_key):
++    """Deterministically map a logical charge ``(order_id, idempotency_key)`` to a
++    stable processor idempotency key.
++
++    The processor is idempotent *by this key* (see processor.py). It MUST be the
++    same across every retry of the same logical charge, or the processor treats a
++    retry as a brand-new charge and double-charges the customer. It must also
++    differ when *either* component differs, so distinct intentional charges
++    (different idempotency_key for the same order) stay distinct.
++    """
++    digest = hashlib.sha256(
++        repr((order_id, idempotency_key)).encode("utf-8")
++    ).hexdigest()
++    return "pk_" + digest[:16]
++
++
+ class PaymentService:
+     def __init__(self, processor):
+         self.processor = processor
+         self.rows = []   # each: order_id, idempotency_key, processor_key, status, charge_id, amount
++        self._global_lock = threading.Lock()
++        self._key_locks = {}  # (order_id, idempotency_key) -> Lock
+ 
+     def _find(self, order_id, idempotency_key):
+         for r in self.rows:
+@@ -23,23 +42,40 @@
+                 return r
+         return None
+ 
++    def _lock_for(self, order_id, idempotency_key):
++        ident = (order_id, idempotency_key)
++        with self._global_lock:
++            lock = self._key_locks.get(ident)
++            if lock is None:
++                lock = threading.Lock()
++                self._key_locks[ident] = lock
++            return lock
++
+     def charge(self, order_id, idempotency_key, amount):
+-        row = self._find(order_id, idempotency_key)
+-        if row is not None and row["status"] == "paid":
++        # Serialize all work for a single logical charge so concurrent callers
++        # (a retry storm) can't each create a row and each hit the processor.
++        with self._lock_for(order_id, idempotency_key):
++            row = self._find(order_id, idempotency_key)
++            if row is not None and row["status"] == "paid":
++                return row
++            time.sleep(0.005)  # simulate a DB read / network round-trip
++            if row is None:
++                row = {"order_id": order_id, "idempotency_key": idempotency_key,
++                       "processor_key": None, "status": "pending",
++                       "charge_id": None, "amount": amount}
++                self.rows.append(row)
++            # Reuse the row's existing processor_key when present (covers
++            # historical rows whose remote charge already lives under that key);
++            # otherwise derive a stable key from the logical identity. Never mint
++            # a fresh random key on retry — that is the double-charge bug.
++            if not row.get("processor_key"):
++                row["processor_key"] = _derive_processor_key(order_id, idempotency_key)
++            processor_key = row["processor_key"]
++            try:
++                res = self.processor.charge(amount, order_id, processor_key)
++            except ProcessorTimeout:
++                row["status"] = "pending"
++                raise
++            row["status"] = "paid"
++            row["charge_id"] = res["id"]
+             return row
+-        time.sleep(0.005)  # simulate a DB read / network round-trip
+-        if row is None:
+-            row = {"order_id": order_id, "idempotency_key": idempotency_key,
+-                   "processor_key": None, "status": "pending",
+-                   "charge_id": None, "amount": amount}
+-            self.rows.append(row)
+-        processor_key = "pk_" + uuid.uuid4().hex[:8]
+-        row["processor_key"] = processor_key
+-        try:
+-            res = self.processor.charge(amount, order_id, processor_key)
+-        except ProcessorTimeout:
+-            row["status"] = "pending"
+-            raise
+-        row["status"] = "paid"
+-        row["charge_id"] = res["id"]
+-        return row

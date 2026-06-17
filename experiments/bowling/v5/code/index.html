@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Strike! — 3D Bowling</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%231565ff'/%3E%3Ccircle cx='13' cy='11' r='1.6' fill='%23051'/%3E%3Ccircle cx='18' cy='11' r='1.6' fill='%23051'/%3E%3Ccircle cx='15' cy='14' r='1.6' fill='%23051'/%3E%3C/svg%3E" />
+    <style>
+      :root {
+        --accent: #00ffcc;
+        --accent-dim: #0a8d77;
+        --gold: #ffcf5a;
+        --panel: rgba(10, 14, 26, 0.82);
+        --panel-line: rgba(0, 255, 204, 0.18);
+        --text: #e8ecf6;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        background: #05070f;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+        color: var(--text);
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #scene { position: fixed; inset: 0; z-index: 0; display: block; cursor: crosshair; }
+
+      /* ---------- Scoreboard (top) ---------- */
+      #hud-top {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+        display: flex; justify-content: center; padding: 8px;
+        pointer-events: none;
+      }
+      #scoreboard {
+        display: flex; align-items: stretch;
+        background: var(--panel);
+        border: 1px solid var(--panel-line);
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(6px);
+        max-width: 96vw;
+      }
+      .frame {
+        min-width: 46px; border-right: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex; flex-direction: column;
+      }
+      .frame.tenth { min-width: 64px; }
+      .frame:last-child { border-right: none; }
+      .frame.active { background: rgba(0, 255, 204, 0.12); }
+      .frame .fnum {
+        font-size: 10px; text-align: center; padding: 2px 0;
+        color: #8a93a8; letter-spacing: 0.5px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .frame .rolls {
+        display: flex; height: 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .frame .rolls span {
+        flex: 1; display: flex; align-items: center; justify-content: center;
+        font-size: 13px; font-weight: 600;
+        border-left: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .frame .rolls span:first-child { border-left: none; }
+      .frame .ftot {
+        height: 26px; display: flex; align-items: center; justify-content: center;
+        font-size: 16px; font-weight: 700; color: var(--gold);
+      }
+      #total-wrap {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 0 14px; background: rgba(0, 255, 204, 0.08);
+        border-left: 1px solid var(--panel-line);
+      }
+      #total-wrap .lbl { font-size: 10px; color: #8a93a8; letter-spacing: 1px; }
+      #total-score { font-size: 26px; font-weight: 800; color: var(--accent); line-height: 1; }
+
+      /* ---------- Controls (bottom) ---------- */
+      #hud-bottom {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+        display: flex; justify-content: center; padding: 12px;
+        pointer-events: none;
+      }
+      #controls {
+        display: flex; align-items: center; gap: 18px;
+        background: var(--panel);
+        border: 1px solid var(--panel-line);
+        border-radius: 14px; padding: 12px 18px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(6px);
+        pointer-events: auto;
+        flex-wrap: wrap; justify-content: center;
+      }
+      .ctl { display: flex; flex-direction: column; gap: 4px; min-width: 130px; }
+      .ctl label {
+        font-size: 11px; color: #9aa3b8; letter-spacing: 0.6px;
+        display: flex; justify-content: space-between;
+      }
+      .ctl label b { color: var(--accent); font-weight: 700; }
+      input[type="range"] {
+        -webkit-appearance: none; appearance: none;
+        height: 6px; border-radius: 3px; background: #1c2334; outline: none;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none; appearance: none;
+        width: 16px; height: 16px; border-radius: 50%;
+        background: var(--accent); cursor: pointer; box-shadow: 0 0 8px var(--accent-dim);
+      }
+      input[type="range"]::-moz-range-thumb {
+        width: 16px; height: 16px; border: none; border-radius: 50%;
+        background: var(--accent); cursor: pointer;
+      }
+      button {
+        font-family: inherit; font-size: 13px; font-weight: 600;
+        color: var(--text); background: #1a2233;
+        border: 1px solid var(--panel-line); border-radius: 8px;
+        padding: 9px 14px; cursor: pointer; transition: all 0.12s;
+      }
+      button:hover { background: #243049; border-color: var(--accent-dim); }
+      #btn-bowl {
+        background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+        color: #042; font-weight: 800; letter-spacing: 0.5px;
+      }
+      #btn-bowl:hover { filter: brightness(1.08); }
+      .btn-row { display: flex; gap: 8px; }
+
+      /* ---------- Status / flash ---------- */
+      #status {
+        position: fixed; left: 0; right: 0; top: 92px; z-index: 9;
+        text-align: center; font-size: 14px; color: #b8c0d4;
+        text-shadow: 0 2px 8px #000; pointer-events: none;
+      }
+      #flash {
+        position: fixed; left: 0; right: 0; top: 32%; z-index: 12;
+        text-align: center; font-size: 64px; font-weight: 900;
+        letter-spacing: 4px; pointer-events: none;
+        text-shadow: 0 4px 24px rgba(0, 0, 0, 0.8);
+        opacity: 0; transform: scale(0.6);
+      }
+      #flash.show { animation: pop 1.4s ease-out forwards; }
+      @keyframes pop {
+        0% { opacity: 0; transform: scale(0.4); }
+        18% { opacity: 1; transform: scale(1.12); }
+        30% { transform: scale(1); }
+        72% { opacity: 1; }
+        100% { opacity: 0; transform: scale(1.05) translateY(-20px); }
+      }
+
+      /* ---------- Game over ---------- */
+      #gameover {
+        position: fixed; inset: 0; z-index: 20; display: none;
+        align-items: center; justify-content: center;
+        background: rgba(3, 5, 12, 0.82); backdrop-filter: blur(4px);
+      }
+      #gameover .card {
+        background: var(--panel); border: 1px solid var(--panel-line);
+        border-radius: 18px; padding: 40px 56px; text-align: center;
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+      }
+      #gameover h1 { font-size: 22px; letter-spacing: 2px; color: #9aa3b8; font-weight: 600; }
+      #final-score { font-size: 88px; font-weight: 900; color: var(--accent); line-height: 1; margin: 6px 0; }
+      #final-rating { font-size: 20px; color: var(--gold); margin-bottom: 24px; }
+
+      /* ---------- Boot error ---------- */
+      #boot-error {
+        display: none; position: fixed; inset: 0; z-index: 50;
+        background: #0a0d18; color: #ff8080; padding: 40px;
+        font-family: monospace; font-size: 14px; line-height: 1.6;
+      }
+      /* ---------- Help hint ---------- */
+      #hint {
+        position: fixed; left: 12px; bottom: 12px; z-index: 8;
+        font-size: 11px; color: #5b657c; max-width: 220px; line-height: 1.5;
+        pointer-events: none;
+      }
+      @media (max-width: 640px) {
+        #flash { font-size: 44px; }
+        .frame { min-width: 34px; }
+        #total-score { font-size: 20px; }
+        #hint { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+
+    <!-- Scoreboard -->
+    <div id="hud-top">
+      <div id="scoreboard">
+        <!-- frames injected/filled by JS via fixed ids -->
+        <div class="frame" id="frame-0"><div class="fnum">1</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame" id="frame-1"><div class="fnum">2</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame" id="frame-2"><div class="fnum">3</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame" id="frame-3"><div class="fnum">4</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame" id="frame-4"><div class="fnum">5</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame" id="frame-5"><div class="fnum">6</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame" id="frame-6"><div class="fnum">7</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame" id="frame-7"><div class="fnum">8</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame" id="frame-8"><div class="fnum">9</div><div class="rolls"><span class="b1"></span><span class="b2"></span></div><div class="ftot"></div></div>
+        <div class="frame tenth" id="frame-9"><div class="fnum">10</div><div class="rolls"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div><div class="ftot"></div></div>
+        <div id="total-wrap"><div class="lbl">TOTAL</div><div id="total-score">0</div></div>
+      </div>
+    </div>
+
+    <div id="status"></div>
+    <div id="flash"></div>
+
+    <!-- Controls -->
+    <div id="hud-bottom">
+      <div id="controls">
+        <div class="ctl">
+          <label>SPIN / HOOK <b id="spin-val">0.00</b></label>
+          <input type="range" id="spin" min="-1" max="1" step="0.05" value="0" />
+        </div>
+        <div class="ctl">
+          <label>POWER <b id="power-val">52%</b></label>
+          <input type="range" id="power" min="0" max="1" step="0.02" value="0.4" />
+        </div>
+        <button id="btn-bowl">BOWL</button>
+        <div class="btn-row">
+          <button id="btn-cam" title="Toggle camera (C)">View</button>
+          <button id="btn-ball" title="Change ball color">Ball</button>
+          <button id="btn-new" title="New game (N)">New</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="hint">
+      Move the mouse to aim. Click the lane (or BOWL) to throw.<br />
+      Spin curves the ball — the dotted line shows where it'll go.<br />
+      Keys: A/D aim · Space bowl · C view · N new game.
+    </div>
+
+    <!-- Game over -->
+    <div id="gameover">
+      <div class="card">
+        <h1>GAME OVER</h1>
+        <div id="final-score">0</div>
+        <div id="final-rating"></div>
+        <button id="btn-play-again">Play Again</button>
+      </div>
+    </div>
+
+    <div id="boot-error"></div>
+
+    <!-- Classic scripts, dependency order. No ES modules => works from file://. -->
+    <script src="three.min.js"></script>
+    <script src="scoring.js"></script>
+    <script src="physics.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>

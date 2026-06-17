@@ -1,0 +1,49 @@
+--- /Users/shridhar/Code/ai/experiments/swe-bench-mini/instances/billing-idempotency/payments.py	2026-06-17 15:46:16
++++ /tmp/swe2/none/payments.py	2026-06-17 15:49:26
+@@ -6,12 +6,27 @@
+ charge. Different idempotency keys for the same order are distinct, intentional
+ charges (the caller chose a new key).
+ """
++import hashlib
+ import time
+-import uuid
+ 
+ from processor import ProcessorTimeout
+ 
+ 
++def _derive_processor_key(order_id, idempotency_key):
++    """Deterministic processor key for an ``(order_id, idempotency_key)`` pair.
++
++    The processor is idempotent *by key*, so the key we send must be STABLE
++    across retries of the same logical charge. Deriving it from the identity of
++    the charge (rather than a fresh ``uuid`` per call) guarantees that every
++    retry — and any concurrent attempt — hits the same remote charge instead of
++    creating a new one.
++    """
++    digest = hashlib.sha256(
++        repr((order_id, idempotency_key)).encode("utf-8")
++    ).hexdigest()
++    return "pk_" + digest[:16]
++
++
+ class PaymentService:
+     def __init__(self, processor):
+         self.processor = processor
+@@ -33,8 +48,15 @@
+                    "processor_key": None, "status": "pending",
+                    "charge_id": None, "amount": amount}
+             self.rows.append(row)
+-        processor_key = "pk_" + uuid.uuid4().hex[:8]
+-        row["processor_key"] = processor_key
++        # The processor is idempotent by key, so the key MUST be stable across
++        # retries of the same (order_id, idempotency_key). Never overwrite a key
++        # already on the row (preserves historical rows written by older code);
++        # otherwise derive a deterministic key from the charge identity so that
++        # retries and concurrent attempts converge on the SAME remote charge.
++        processor_key = row["processor_key"]
++        if processor_key is None:
++            processor_key = _derive_processor_key(order_id, idempotency_key)
++            row["processor_key"] = processor_key
+         try:
+             res = self.processor.charge(amount, order_id, processor_key)
+         except ProcessorTimeout:
