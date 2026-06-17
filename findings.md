@@ -87,6 +87,49 @@ reasoning — in prose, with evidence citations — instead of prescribing artif
 it produced only because it was told to. Same results, instructions that match
 reality.
 
+## Follow-up — does it change the actual patch?
+
+The field test above scored *approach* and *outcome*. A second round asked a
+sharper question: when each variant produces a real patch, judged by hidden tests
+it never sees, does the patch itself differ? Four variants — none, the previous
+version, the current version, and an independently-authored alternative — each
+fixed the same bug in an isolated checkout, scored by a gold suite restored after
+the agent finished (so no patch could weaken a test to pass). Everything ran on a
+flat-rate subscription, at no per-token cost.
+
+Three bugs, increasing in nastiness:
+
+- **A localized logic bug** whose obvious fix regresses an unrelated test. **All
+  four fixed it cleanly** — none took the bait.
+- **A double-charge under retry and concurrency.** The minimal correct fix
+  satisfies the literal contract but leaves duplicate bookkeeping rows under a
+  concurrent retry storm. **The uninstructed agent stopped at the literal
+  contract; all three instructed variants serialized the race** — the first
+  score-visible split.
+- **Stale permissions after a role change,** behind a cache with two *hidden*
+  parallel read paths. **All four traced both paths, invalidated correctly, and
+  avoided over-flushing** — the under-scoped and overreach traps caught nobody.
+  The whole split came down to one deterministic concurrency gate: after an update
+  returns, can a still-in-flight read repopulate a stale value? **Only the current
+  version made its compute-and-write atomic against the update; the other three
+  repopulated the stale permission** — the same result on five of five runs.
+
+The pattern from the field test held and sharpened. On the *named* bug and every
+non-concurrency trap, a capable model — uninstructed included — lands a correct,
+non-regressing, multi-path-aware fix; eight of eight on the obvious correctness.
+The separation is **entirely on concurrency depth**, and it only surfaces when the
+harness is built to *trigger* the failure: a 400-round stress probe of the
+permissions race found zero failures for every variant, while a deterministic,
+event-coordinated gate found the hole every time. Across the round the instructed
+variants — and the current version most consistently — carried the most defensive
+depth: it alone closed *both* concurrency races, and, in a separate browser-game
+task, alone built and tested against a real-environment failure (a page that only
+breaks when opened as a file, not over a server) that the others shipped past. The
+independently-authored alternative matched the previous version's useful behavior
+but never reached that depth.
+
+(Full study, fixtures, and per-variant patches: `experiments/swe-bench-mini/`.)
+
 ## Limitations
 
 - A single codebase, with an already-strong project configuration that supplied
@@ -98,6 +141,9 @@ reality.
 - Judgment-based grading used a blind panel, and one verification step relied on
   a model truthfully reporting its own context, corroborated by four independent
   on-disk checks.
+- The patch-and-test follow-up is one run per bug across three bugs; its
+  separation rode entirely on concurrency gates the harness was purpose-built to
+  trigger, and would be invisible to a less adversarial test.
 
 ## Recommendation
 
